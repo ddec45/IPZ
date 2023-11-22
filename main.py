@@ -30,6 +30,11 @@ LEFT_EYEBROW = [336, 296, 334, 293, 300, 276, 283, 282, 295, 285]
 RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
 RIGHT_EYEBROW = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
 
+LEFT_PUPIL_POINT = 468
+LEFT_IRIS = [469,470,471,472]
+RIGHT_PUPIL_POINT = 473
+RIGHT_IRIS = [474,475,476,477]
+
 map_face_mesh = mp.solutions.face_mesh
 # camera object
 camera = cv.VideoCapture(0)
@@ -54,7 +59,6 @@ def euclaideanDistance(point, point1):
     x1, y1 = point1
     distance = math.sqrt((x1 - x) ** 2 + (y1 - y) ** 2)
     return distance
-
 
 # Blinking Ratio
 def blinkRatio(img, landmarks, right_indices, left_indices):
@@ -189,11 +193,12 @@ def pixelCounter(first_piece, second_piece, third_piece):
     return pos_eye, color
 
 
-with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5) as face_mesh:
+with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5, refine_landmarks=True) as face_mesh:
     # starting time here
     start_time = time.time()
     # starting Video loop here.
-    while True:
+    quit_condition = False
+    while not quit_condition:
         frame_counter += 1  # frame counter
         ret, frameBeforeFlip = camera.read()  # getting frame from camera
         if not ret:
@@ -206,6 +211,7 @@ with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidenc
         rgb_frame = cv.cvtColor(frame, cv.COLOR_RGB2BGR)
         results = face_mesh.process(rgb_frame)
         if results.multi_face_landmarks:
+            test = results.multi_face_landmarks
             mesh_coords = landmarksDetection(frame, results, False)
             ratio = blinkRatio(frame, mesh_coords, RIGHT_EYE, LEFT_EYE)
             # cv.putText(frame, f'ratio {ratio}', (100, 100), FONTS, 1.0, utils.GREEN, 2)
@@ -225,21 +231,92 @@ with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidenc
             # cv.putText(frame, f'Total Blinks: {TOTAL_BLINKS}', (100, 150), FONTS, 0.6, utils.GREEN, 2)
             utils.colorBackgroundText(frame, f'Total Blinks: {TOTAL_BLINKS}', FONTS, 0.7, (30, 150), 2)
 
-            cv.polylines(frame, [np.array([mesh_coords[p] for p in LEFT_EYE], dtype=np.int32)], True, utils.GREEN, 1,
+            right_eye_coords = [mesh_coords[p] for p in RIGHT_EYE]
+            left_eye_coords = [mesh_coords[p] for p in LEFT_EYE]
+            right_iris_coords = [mesh_coords[p] for p in LEFT_IRIS]
+            left_iris_coords = [mesh_coords[p] for p in RIGHT_IRIS]
+            right_pupil_coords = mesh_coords[LEFT_PUPIL_POINT]
+            left_pupil_coords = mesh_coords[RIGHT_PUPIL_POINT]
+
+            cv.polylines(frame, [np.array(left_eye_coords, dtype=np.int32)], True, utils.GREEN, 1,
                          cv.LINE_AA)
-            cv.polylines(frame, [np.array([mesh_coords[p] for p in RIGHT_EYE], dtype=np.int32)], True, utils.GREEN, 1,
+            cv.polylines(frame, [np.array(right_eye_coords, dtype=np.int32)], True, utils.GREEN, 1,
                          cv.LINE_AA)
+            cv.polylines(frame, [np.array(right_iris_coords,dtype=np.int32)], True, utils.GREEN, 1,
+                         cv.LINE_AA)
+            cv.polylines(frame, [np.array(left_iris_coords, dtype=np.int32)], True, utils.GREEN, 1,
+                         cv.LINE_AA)
+            cv.circle(frame, right_pupil_coords, 1, utils.GREEN)
+            cv.circle(frame, left_pupil_coords, 1, utils.GREEN)
 
             # Blink Detector Counter Completed
-            right_coords = [mesh_coords[p] for p in RIGHT_EYE]
-            left_coords = [mesh_coords[p] for p in LEFT_EYE]
-            crop_right, crop_left = eyesExtractor(frame, right_coords, left_coords)
+            crop_right, crop_left = eyesExtractor(frame, right_eye_coords, left_eye_coords)
             # cv.imshow('right', crop_right)
             # cv.imshow('left', crop_left)
-            eye_position, color = positionEstimator(crop_right)
+
+            # eye_position, color = positionEstimator(crop_right)
+            # right_first_distance = right_pupil_coords[0] - mesh_coords[33][0]
+            # right_second_distance = mesh_coords[133][0] - right_pupil_coords[0]
+            right_first_distance = right_pupil_coords[0] - np.min([p[0] for p in right_eye_coords])
+            right_second_distance = np.max([p[0] for p in right_eye_coords]) - right_pupil_coords[0]
+            if right_first_distance >= 1.4 * right_second_distance:
+                eye_position = "RIGHT"
+                color = [utils.BLACK, utils.GREEN]
+            elif 1.4 * right_first_distance <= right_second_distance :
+                eye_position = 'LEFT'
+                color = [utils.GRAY, utils.YELLOW]
+            else:
+                eye_position = 'CENTER'
+                color = [utils.YELLOW, utils.PINK]
+            # else:
+            #     eye_position = "Closed"
+            #     color = [utils.GRAY, utils.YELLOW]
             utils.colorBackgroundText(frame, f'R: {eye_position}', FONTS, 1.0, (40, 220), 2, color[0], color[1], 8, 8)
-            eye_position_left, color = positionEstimator(crop_left)
-            utils.colorBackgroundText(frame, f'L: {eye_position_left}', FONTS, 1.0, (40, 320), 2, color[0], color[1], 8,
+            # eye_position_left, color = positionEstimator(crop_left)
+            # left_first_distance = left_pupil_coords[0] - mesh_coords[362][0]
+            # left_second_distance = mesh_coords[263][0] - left_pupil_coords[0]
+            left_first_distance = left_pupil_coords[0] - np.min([p[0] for p in left_eye_coords])
+            left_second_distance = np.max([p[0] for p in left_eye_coords]) - left_pupil_coords[0]
+            if left_first_distance >= 1.4 * left_second_distance:
+                eye_position_left = "RIGHT"
+                color = [utils.BLACK, utils.GREEN]
+            elif 1.4 * left_first_distance <= left_second_distance :
+                eye_position_left = 'LEFT'
+                color = [utils.GRAY, utils.YELLOW]
+            else:
+                eye_position_left = 'CENTER'
+                color = [utils.YELLOW, utils.PINK]
+            utils.colorBackgroundText(frame, f'L: {eye_position_left}', FONTS, 1.0, (40, 280), 2, color[0], color[1], 8,
+                                      8)
+
+            # right_first_distance = right_pupil_coords[1] - mesh_coords[159][1]
+            # right_second_distance = mesh_coords[145][1] - right_pupil_coords[1]
+            right_first_distance = right_pupil_coords[1] - np.min([p[1] for p in right_eye_coords])
+            right_second_distance = np.max([p[1] for p in right_eye_coords]) - right_pupil_coords[1]
+            if right_first_distance >= 1.2 * right_second_distance:
+                eye_position = "DOWN"
+                color = [utils.BLACK, utils.GREEN]
+            elif 1.2 * right_first_distance <= right_second_distance :
+                eye_position = 'UP'
+                color = [utils.GRAY, utils.YELLOW]
+            else:
+                eye_position = 'CENTER'
+                color = [utils.YELLOW, utils.PINK]
+            utils.colorBackgroundText(frame, f'R: {eye_position}', FONTS, 1.0, (40, 380), 2, color[0], color[1], 8, 8)
+            # left_first_distance = left_pupil_coords[1] - mesh_coords[386][1]
+            # left_second_distance = mesh_coords[374][1] - left_pupil_coords[1]
+            left_first_distance = left_pupil_coords[1] - np.min([p[1] for p in left_eye_coords])
+            left_second_distance = np.max([p[1] for p in left_eye_coords])- left_pupil_coords[1]
+            if left_first_distance >= 1.2 * left_second_distance:
+                eye_position_left = "DOWN"
+                color = [utils.BLACK, utils.GREEN]
+            elif 1.2 * left_first_distance <= left_second_distance :
+                eye_position_left = 'UP'
+                color = [utils.GRAY, utils.YELLOW]
+            else:
+                eye_position_left = 'CENTER'
+                color = [utils.YELLOW, utils.PINK]
+            utils.colorBackgroundText(frame, f'L: {eye_position_left}', FONTS, 1.0, (40, 440), 2, color[0], color[1], 8,
                                       8)
 
         # calculating  frame per seconds FPS
@@ -253,6 +330,6 @@ with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidenc
         cv.imshow('frame', frame)
         key = cv.waitKey(2)
         if key == ord('q') or key == ord('Q'):
-            break
+            quit_condition = True
     cv.destroyAllWindows()
     camera.release()
