@@ -16,24 +16,26 @@ FONTS = cv.FONT_HERSHEY_COMPLEX
 # face bounder indices
 FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176,
              149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
+NOSE_CENTER_LINE = [10, 151, 9, 8, 168, 6, 197, 195, 5, 4, 1, 19, 94, 2]
 
 # lips indices for Landmarks
 LIPS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 185, 40, 39,
         37, 0, 267, 269, 270, 409, 415, 310, 311, 312, 13, 82, 81, 42, 183, 78]
 LOWER_LIPS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95]
 UPPER_LIPS = [185, 40, 39, 37, 0, 267, 269, 270, 409, 415, 310, 311, 312, 13, 82, 81, 42, 183, 78]
-# Left eyes indices
+# left eyes indices
 LEFT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
 LEFT_EYEBROW = [336, 296, 334, 293, 300, 276, 283, 282, 295, 285]
+LEFT_PUPIL_POINT = 468
+LEFT_IRIS = [469,470,471,472]
+LEFT_KEY_POINTS = [362, 263, 9, 8] #lewo, prawo, góra, dół
 
 # right eyes indices
 RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
 RIGHT_EYEBROW = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
-
-LEFT_PUPIL_POINT = 468
-LEFT_IRIS = [469,470,471,472]
 RIGHT_PUPIL_POINT = 473
-RIGHT_IRIS = [474,475,476,477]
+RIGHT_IRIS = [474, 475, 476, 477]
+RIGHT_KEY_POINTS = [33, 133, 9, 8] #lewo, prawo, góra, dół
 
 map_face_mesh = mp.solutions.face_mesh
 # camera object
@@ -59,6 +61,10 @@ def euclaideanDistance(point, point1):
     x1, y1 = point1
     distance = math.sqrt((x1 - x) ** 2 + (y1 - y) ** 2)
     return distance
+
+# Distance ratio of x1->x2 length to x3->x4 length
+def distanceRatio(x1, x2, x3, x4):
+    return (np.abs(x1 - x2) * 1.0) / np.abs(x3 - x4)
 
 # Blinking Ratio
 def blinkRatio(img, landmarks, right_indices, left_indices):
@@ -193,10 +199,14 @@ def pixelCounter(first_piece, second_piece, third_piece):
     return pos_eye, color
 
 
-with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5, refine_landmarks=True) as face_mesh:
+with (map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5, refine_landmarks=True) as face_mesh):
     # starting time here
     start_time = time.time()
     # starting Video loop here.
+    calibration_cnt = 0
+    is_calibrated = False
+    left_eye_calibration = []
+    right_eye_calibration = []
     quit_condition = False
     while not quit_condition:
         frame_counter += 1  # frame counter
@@ -205,10 +215,21 @@ with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidenc
             break  # no more frames break
         #  resizing frame
         frame = cv.flip(frameBeforeFlip, 1)   #odwrocilem kamere bo jest przejrzysciej i spowodowalem komplikacje, juz opanowane
-
         frame = cv.resize(frame, None, fx=1.5, fy=1.5, interpolation=cv.INTER_CUBIC)
         frame_height, frame_width = frame.shape[:2]
         rgb_frame = cv.cvtColor(frame, cv.COLOR_RGB2BGR)
+
+        # mp_face_detection = mp.solutions.face_detection
+        # face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+        # results = face_detection.process(rgb_frame)
+        # if results.detections:
+        #     frame_height, frame_width = frame.shape[:2]
+        #     test = results.detections
+        #     bounding_box = results.detections[0].location_data.relative_bounding_box
+        #     frame = frame[int(bounding_box.xmin * frame_width):int((bounding_box.xmin+bounding_box.width) * frame_width),
+        #             int(bounding_box.ymin * frame_height):int((bounding_box.ymin + bounding_box.height) * frame_height)]
+        #     frame = cv.resize(frame, None, fx=2, fy=2, interpolation=cv.INTER_CUBIC)
+
         results = face_mesh.process(rgb_frame)
         if results.multi_face_landmarks:
             test = results.multi_face_landmarks
@@ -233,15 +254,15 @@ with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidenc
 
             right_eye_coords = [mesh_coords[p] for p in RIGHT_EYE]
             left_eye_coords = [mesh_coords[p] for p in LEFT_EYE]
-            right_iris_coords = [mesh_coords[p] for p in LEFT_IRIS]
-            left_iris_coords = [mesh_coords[p] for p in RIGHT_IRIS]
-            right_pupil_coords = mesh_coords[LEFT_PUPIL_POINT]
-            left_pupil_coords = mesh_coords[RIGHT_PUPIL_POINT]
-
             cv.polylines(frame, [np.array(left_eye_coords, dtype=np.int32)], True, utils.GREEN, 1,
                          cv.LINE_AA)
             cv.polylines(frame, [np.array(right_eye_coords, dtype=np.int32)], True, utils.GREEN, 1,
                          cv.LINE_AA)
+
+            right_iris_coords = [mesh_coords[p] for p in LEFT_IRIS]
+            left_iris_coords = [mesh_coords[p] for p in RIGHT_IRIS]
+            right_pupil_coords = mesh_coords[LEFT_PUPIL_POINT]
+            left_pupil_coords = mesh_coords[RIGHT_PUPIL_POINT]
             cv.polylines(frame, [np.array(right_iris_coords,dtype=np.int32)], True, utils.GREEN, 1,
                          cv.LINE_AA)
             cv.polylines(frame, [np.array(left_iris_coords, dtype=np.int32)], True, utils.GREEN, 1,
@@ -249,87 +270,149 @@ with map_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidenc
             cv.circle(frame, right_pupil_coords, 1, utils.GREEN)
             cv.circle(frame, left_pupil_coords, 1, utils.GREEN)
 
+            # face_oval_coords = [mesh_coords[p] for p in FACE_OVAL]
+            # cv.polylines(frame, [np.array(face_oval_coords, dtype=np.int32)], True, utils.GREEN, 1,
+            #              cv.LINE_AA)
+
+            # nose_center_line_coords = [mesh_coords[p] for p in NOSE_CENTER_LINE]
+            # for i in nose_center_line_coords:
+            #     cv.circle(frame, i, 5, utils.GREEN)
+
+            # mean_coords = np.asarray([np.mean(nose_center_line_coords[0:7], axis=0),
+            #                           np.mean(nose_center_line_coords[7:14], axis=0)], dtype=np.int16)
+            # nose_center_line_mean_coords = [tuple(p) for p in nose_center_line_mean_coords]
+            # for i in mean_coords:
+            #     cv.circle(frame, i, 5, utils.RED)
+
+            # right_mean_coords = np.asarray([np.mean([mesh_coords[p] for p in [223,27]], axis=0),
+            #                           np.mean([mesh_coords[p] for p in [23,230]], axis=0)], dtype=np.int16)
+            # left_mean_coords = np.asarray([np.mean([mesh_coords[p] for p in [443, 257]], axis=0),
+            #                               np.mean([mesh_coords[p] for p in [253, 450]], axis=0)], dtype=np.int16)
+            right_mean_coords = np.asarray([np.mean([mesh_coords[p] for p in [2,94]], axis=0),
+                                           np.mean([mesh_coords[p] for p in [168, 6]], axis=0)], dtype=np.int16)
+            left_mean_coords = right_mean_coords
+
+            for i in left_mean_coords:
+                cv.circle(frame, i, 5, utils.RED)
+            for i in right_mean_coords:
+                cv.circle(frame, i, 5, utils.RED)
+
+            right_key_points_coords = [mesh_coords[p] for p in RIGHT_KEY_POINTS]
+            left_key_points_coords = [mesh_coords[p] for p in LEFT_KEY_POINTS]
+
+            # RIGHT_TEST = [189, 221, 222, 223, 224, 225, 113, 226, 31, 228, 229, 230, 231, 232, 233, 244]
+            # right_test_coords = [mesh_coords[p] for p in RIGHT_TEST]
+            # LEFT_TEST = [413, 441, 442, 443, 444, 445, 342, 446, 261, 448, 449, 450, 451, 452, 453, 464]
+            # left_test_coords = [mesh_coords[p] for p in LEFT_TEST]
+            # cv.polylines(frame, [np.array(right_test_coords, dtype=np.int32)], True, utils.GREEN, 1,
+            #              cv.LINE_AA)
+            # cv.polylines(frame, [np.array(left_test_coords, dtype=np.int32)], True, utils.GREEN, 1,
+            #              cv.LINE_AA)
+
             # Blink Detector Counter Completed
-            crop_right, crop_left = eyesExtractor(frame, right_eye_coords, left_eye_coords)
-            # cv.imshow('right', crop_right)
-            # cv.imshow('left', crop_left)
+            # crop_right, crop_left = eyesExtractor(frame, right_eye_coords, left_eye_coords)
+            # cv.imshow('right', cv.resize(crop_right, None, fx=5, fy=5, interpolation=cv.INTER_CUBIC))
+            # cv.imshow('left', cv.resize(crop_left, None, fx=5, fy=5, interpolation=cv.INTER_CUBIC))
 
-            # eye_position, color = positionEstimator(crop_right)
-            # right_first_distance = right_pupil_coords[0] - mesh_coords[33][0]
-            # right_second_distance = mesh_coords[133][0] - right_pupil_coords[0]
-            right_first_distance = right_pupil_coords[0] - np.min([p[0] for p in right_eye_coords])
-            right_second_distance = np.max([p[0] for p in right_eye_coords]) - right_pupil_coords[0]
-            if right_first_distance >= 1.4 * right_second_distance:
-                eye_position = "RIGHT"
-                color = [utils.BLACK, utils.GREEN]
-            elif 1.4 * right_first_distance <= right_second_distance :
-                eye_position = 'LEFT'
-                color = [utils.GRAY, utils.YELLOW]
-            else:
-                eye_position = 'CENTER'
-                color = [utils.YELLOW, utils.PINK]
-            # else:
-            #     eye_position = "Closed"
-            #     color = [utils.GRAY, utils.YELLOW]
-            utils.colorBackgroundText(frame, f'R: {eye_position}', FONTS, 1.0, (40, 220), 2, color[0], color[1], 8, 8)
-            # eye_position_left, color = positionEstimator(crop_left)
-            # left_first_distance = left_pupil_coords[0] - mesh_coords[362][0]
-            # left_second_distance = mesh_coords[263][0] - left_pupil_coords[0]
-            left_first_distance = left_pupil_coords[0] - np.min([p[0] for p in left_eye_coords])
-            left_second_distance = np.max([p[0] for p in left_eye_coords]) - left_pupil_coords[0]
-            if left_first_distance >= 1.4 * left_second_distance:
-                eye_position_left = "RIGHT"
-                color = [utils.BLACK, utils.GREEN]
-            elif 1.4 * left_first_distance <= left_second_distance :
-                eye_position_left = 'LEFT'
-                color = [utils.GRAY, utils.YELLOW]
-            else:
-                eye_position_left = 'CENTER'
-                color = [utils.YELLOW, utils.PINK]
-            utils.colorBackgroundText(frame, f'L: {eye_position_left}', FONTS, 1.0, (40, 280), 2, color[0], color[1], 8,
-                                      8)
+            # Detecting eye position if calibrated
+            if is_calibrated:
+                right_distance = distanceRatio(right_key_points_coords[1][0], right_pupil_coords[0],
+                                               right_key_points_coords[1][0],
+                                               right_key_points_coords[0][0])
+                if right_distance >= right_eye_calibration[0]:
+                    eye_position = 'LEFT'
+                    color = [utils.GRAY, utils.YELLOW]
+                elif right_distance <= right_eye_calibration[1]:
+                    eye_position = "RIGHT"
+                    color = [utils.BLACK, utils.GREEN]
+                else:
+                    eye_position = 'CENTER'
+                    color = [utils.YELLOW, utils.PINK]
+                utils.colorBackgroundText(frame, f'R: {round(right_distance,2)}, {eye_position}',
+                                          FONTS, 1.0, (40, 220), 2, color[0], color[1], 8, 8)
 
-            # right_first_distance = right_pupil_coords[1] - mesh_coords[159][1]
-            # right_second_distance = mesh_coords[145][1] - right_pupil_coords[1]
-            right_first_distance = right_pupil_coords[1] - np.min([p[1] for p in right_eye_coords])
-            right_second_distance = np.max([p[1] for p in right_eye_coords]) - right_pupil_coords[1]
-            if right_first_distance >= 1.2 * right_second_distance:
-                eye_position = "DOWN"
-                color = [utils.BLACK, utils.GREEN]
-            elif 1.2 * right_first_distance <= right_second_distance :
-                eye_position = 'UP'
-                color = [utils.GRAY, utils.YELLOW]
-            else:
-                eye_position = 'CENTER'
-                color = [utils.YELLOW, utils.PINK]
-            utils.colorBackgroundText(frame, f'R: {eye_position}', FONTS, 1.0, (40, 380), 2, color[0], color[1], 8, 8)
-            # left_first_distance = left_pupil_coords[1] - mesh_coords[386][1]
-            # left_second_distance = mesh_coords[374][1] - left_pupil_coords[1]
-            left_first_distance = left_pupil_coords[1] - np.min([p[1] for p in left_eye_coords])
-            left_second_distance = np.max([p[1] for p in left_eye_coords])- left_pupil_coords[1]
-            if left_first_distance >= 1.2 * left_second_distance:
-                eye_position_left = "DOWN"
-                color = [utils.BLACK, utils.GREEN]
-            elif 1.2 * left_first_distance <= left_second_distance :
-                eye_position_left = 'UP'
-                color = [utils.GRAY, utils.YELLOW]
-            else:
-                eye_position_left = 'CENTER'
-                color = [utils.YELLOW, utils.PINK]
-            utils.colorBackgroundText(frame, f'L: {eye_position_left}', FONTS, 1.0, (40, 440), 2, color[0], color[1], 8,
-                                      8)
+                left_distance = distanceRatio(left_key_points_coords[0][0], left_pupil_coords[0],
+                                              left_key_points_coords[0][0],
+                                              left_key_points_coords[1][0])
+                if left_distance <= left_eye_calibration[0]:
+                    eye_position = 'LEFT'
+                    color = [utils.GRAY, utils.YELLOW]
+                elif left_distance >= left_eye_calibration[1]:
+                    eye_position = "RIGHT"
+                    color = [utils.BLACK, utils.GREEN]
+                else:
+                    eye_position = 'CENTER'
+                    color = [utils.YELLOW, utils.PINK]
+                utils.colorBackgroundText(frame, f'L: {round(left_distance,2)}, {eye_position}',
+                                          FONTS, 1.0, (40, 280), 2, color[0], color[1], 8, 8)
+
+                right_distance = distanceRatio(right_mean_coords[0][1], right_pupil_coords[1],
+                                               right_mean_coords[0][1],
+                                               right_mean_coords[1][1])
+                if right_distance >= right_eye_calibration[2]:
+                    eye_position = 'UP'
+                    color = [utils.GRAY, utils.YELLOW]
+                elif right_distance <= right_eye_calibration[3]:
+                    eye_position = "DOWN"
+                    color = [utils.BLACK, utils.GREEN]
+                else:
+                    eye_position = 'CENTER'
+                    color = [utils.YELLOW, utils.PINK]
+                utils.colorBackgroundText(frame, f'R: {round(right_distance,2)}, {eye_position}',
+                                          FONTS, 1.0, (40, 380), 2, color[0], color[1], 8, 8)
+
+                left_distance = distanceRatio(left_mean_coords[0][1], left_pupil_coords[1],
+                                              left_mean_coords[0][1],
+                                              left_mean_coords[1][1])
+                if left_distance <= left_eye_calibration[2]:
+                    eye_position = 'UP'
+                    color = [utils.GRAY, utils.YELLOW]
+                elif left_distance >= left_eye_calibration[3]:
+                    eye_position = "DOWN"
+                    color = [utils.BLACK, utils.GREEN]
+                else:
+                    eye_position = 'CENTER'
+                    color = [utils.YELLOW, utils.PINK]
+                utils.colorBackgroundText(frame, f'L: {round(left_distance,2)}, {eye_position}',
+                                          FONTS, 1.0, (40, 440), 2, color[0], color[1], 8, 8)
 
         # calculating  frame per seconds FPS
         end_time = time.time() - start_time
         fps = frame_counter / end_time
-
         frame = utils.textWithBackground(frame, f'FPS: {round(fps, 1)}', FONTS, 1.0, (30, 50), bgOpacity=0.9,
                                          textThickness=2)
+        frame = utils.textWithBackground(frame, f'cnt: {calibration_cnt}', FONTS, 1.0, (200, 50), bgOpacity=0.9,
+                                         textThickness=2)
+
         # writing image for thumbnail drawing shape
         # cv.imwrite(f'img/frame_{frame_counter}.png', frame)
         cv.imshow('frame', frame)
         key = cv.waitKey(2)
         if key == ord('q') or key == ord('Q'):
             quit_condition = True
+        if not is_calibrated and results.multi_face_landmarks and (key == ord('c') or key == ord('C')):
+            if calibration_cnt < 2:
+                right_eye_calibration.append(distanceRatio(right_key_points_coords[1][0], right_pupil_coords[0],
+                                                           right_key_points_coords[1][0],
+                                                           right_key_points_coords[0][0]))
+                left_eye_calibration.append(distanceRatio(left_key_points_coords[0][0], left_pupil_coords[0],
+                                                          left_key_points_coords[0][0],
+                                                          left_key_points_coords[1][0]))
+            else:
+                right_eye_calibration.append(distanceRatio(right_mean_coords[0][1], right_pupil_coords[1],
+                                                           right_mean_coords[0][1],
+                                                           right_mean_coords[1][1]))
+                left_eye_calibration.append(distanceRatio(left_mean_coords[0][1], left_pupil_coords[1],
+                                                          left_mean_coords[0][1],
+                                                          left_mean_coords[1][1]))
+            calibration_cnt += 1
+            if calibration_cnt >= 4:
+                is_calibrated = True
+        if key == ord('r') or key == ord('R'):
+            is_calibrated = False
+            calibration_cnt = 0
+            right_eye_calibration.clear()
+            left_eye_calibration.clear()
+
     cv.destroyAllWindows()
     camera.release()
